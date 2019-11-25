@@ -4,15 +4,16 @@ A few outcomes can be expected and must be handled.
 
 **Note that although some of these results do not tell an analyst the
 'creation time' of the domain, the lack of creation time might
-say 'something' to the analyst about that domain/zone:
+say 'something' to the analyst about that domain/zone. Some things to
+consider:
 
-    1. The TLD is unknown/unsupported by the whois package.
-    2. The result is an object of Nonetype -- no result found.
-    3. The whois result for the TLD doesn't include
+    - The TLD is unknown/unsupported by the whois package.
+    - The result is an object of Nonetype -- no result found.
+    - The whois result for the TLD doesn't include
         a creation time.
-    4. Whois linux program is not installed in the OS of the
+    - Whois linux program is not installed in the OS of the
         analysis server.
-    5. There were actual results.
+    - There were actual results.
 """
 
 import logging
@@ -41,22 +42,22 @@ class WhoisAnalysis(Analysis):
             KEY_DATETIME_OF_ANALYSIS: None,
         }
         self.tld_not_supported = False
-        self.create_datetime_not_found = False
+        self.creation_datetime_not_found = False
         self.no_result = False
         self.whois_not_installed = False
+        self.creation_datetime_wrong_format = False
 
 
     @property
     def jinja_template_path(self):
-        # Need to implement
-        pass
+        return "analysis/whois.html"
 
     @property
-    def create_datetime(self):
+    def creation_datetime(self):
         return self.details[KEY_DATETIME_CREATED]
 
-    @create_datetime.setter
-    def create_datetime(self, value):
+    @creation_datetime.setter
+    def creation_datetime(self, value):
         self.details[KEY_DATETIME_CREATED] = value
 
     @property
@@ -87,8 +88,11 @@ class WhoisAnalysis(Analysis):
         if self.no_result:
             message = _message.format("FQDN doesn't exist.")
 
-        if self.create_datetime_not_found:
+        if self.creation_datetime_not_found:
             message = _message.format("Result does not include creation datetime.")
+
+        if self.creation_datetime_wrong_format:
+            message = _message.format("Creation datetime in wrong format.")
 
         if self.whois_not_installed:
             message = _message.format(
@@ -111,7 +115,7 @@ class WhoisAnalysis(Analysis):
         return message
 
 
-class WhoisAnalyzer(AnalysisModule):
+class WhoisAnalyzer(AnalysisModule):  # deep
 
     @property
     def generated_analysis_type(self):
@@ -124,42 +128,77 @@ class WhoisAnalyzer(AnalysisModule):
     def execute_analysis(self, _fqdn):
         """Executes analysis for Whois analysis of domains/zones."""
 
+        analysis = self.create_analysis(_fqdn)
+        analysis.logs = self.json()
+
+        fqdn = _fqdn.value
+
         try:
-            logging.debug("Beginning whois analysis of {}".format(_fqdn))
-            result = whois.query(_fqdn)
+            logging.debug("Beginning whois analysis of {}".format(fqdn))
+            result = whois.query(fqdn)
 
         # whois python module doesn't know about the TLD of the FQDN
         except UnknownTld:
-            # TODO Update analysis - Set tld not supported.
-            logging.debug("TLD not supported for {}.".format(_fqdn))
+            analysis.tld_not_supported = True
+            logging.debug("TLD not supported by for {}.".format(fqdn))
             return True  # Still tells an analyst something about the domain.
 
         except FileNotFoundError:
-            # TODO Update analysis - whois not installed
+            analysis.whois_not_installed = True
             logging.debug("Whois not installed on analysis server.")
             return True
 
         else:
-            # If TLD was valid but domain wasn't found.
             if result is None:
-                # TODO Update analysis - No result received
+                analysis.no_result = True
                 logging.debug(
-                    "No result received from whois analysis of {}".format(_fqdn)
+                    "No result received from whois analysis of {}".format(fqdn)
                 )
                 return True # return analysis
 
-            # If creation date not reported back from whois server.
-            if "creation_date" not in result.__dict__.keys():
-                # TODO Update analysis - Result does not include creation datetime
+            if 'name' not in result.__dict__.keys():
+                analysis.zone_name = "NO_NAME_RETURNED"
                 logging.debug(
-                    "Result does not include creation datetime for {}".format(_fqdn)
+                    "Result did not include name attribute for {}".format(fqdn)
+                )
+            else:
+                analysis.zone_name = result.name
+
+            # If creation date not reported back from whois server.
+            # This happens on certain TLDs
+            if "creation_date" not in result.__dict__.keys():
+                analysis.creation_datetime_not_found = True
+                logging.debug(
+                    "Result does not include creation datetime for {}".format(fqdn)
                 )
                 return True
 
-            if
+            # If creation date is not a datetime object as expected
+            if not isinstance(result.creation_date, datetime):
+                analysis.creation_datetime_wrong_format = True
+                logging.debug(
+                    "Creation datetime in unexpected format for {}".format(fqdn)
+                )
+                return True
 
+            _now = datetime.now()
+            _delta = _now - result.creation_date
+            
+            analysis.creation_datetime = result.creation_date.isoformat(' ')
+            analysis.analysis_datetime = _now.isoformat(' ')
 
+            # Days will appear as a negative anytime 'now' is less than
+            # the whois creation time.. added in case of timezone
+            # issues.
+            if _delta.days < 0:
+                analysis.age_in_days = "0"
+                return True
 
+            # Floor value, because I'm paranoid.
+            age_in_days = _delta.seconds // 86400
 
+            analysis.age_in_days = str(age_in_days)
 
-
+            return True
+            
+        return False
