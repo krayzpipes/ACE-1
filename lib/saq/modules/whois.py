@@ -106,10 +106,8 @@ class WhoisAnalysis(Analysis):
             # for the analyst in whether whois attempted to lookup a
             # FQDN/subdomain or the root zone.
 
-            _status = "{} is {} days old.".format(
-                self.details[KEY_ZONE_NAME],
-                self.details[KEY_AGE_IN_DAYS],
-            )
+            _status = f"{self.details[KEY_ZONE_NAME]} is " \
+                      f"{self.details[KEY_AGE_IN_DAYS]} days old."
             message = _message.format(_status)
 
         return message
@@ -134,33 +132,29 @@ class WhoisAnalyzer(AnalysisModule):  # deep
         fqdn = _fqdn.value
 
         try:
-            logging.debug("Beginning whois analysis of {}".format(fqdn))
+            logging.debug(f"Beginning whois analysis of {fqdn}")
             result = whois.query(fqdn)
 
         # whois python module doesn't know about the TLD of the FQDN
         except UnknownTld:
             analysis.tld_not_supported = True
-            logging.debug("TLD not supported by for {}.".format(fqdn))
+            logging.debug(f"TLD not supported by for {fqdn}.")
             return True  # Still tells an analyst something about the domain.
 
         except FileNotFoundError:
             analysis.whois_not_installed = True
-            logging.debug("Whois not installed on analysis server.")
+            logging.debug("Whois program not installed on analysis server.")
             return True
 
         else:
             if result is None:
                 analysis.no_result = True
-                logging.debug(
-                    "No result received from whois analysis of {}".format(fqdn)
-                )
-                return True # return analysis
+                logging.debug(f"No result received from whois analysis of {fqdn}")
+                return True
 
             if 'name' not in result.__dict__.keys():
                 analysis.zone_name = "NO_NAME_RETURNED"
-                logging.debug(
-                    "Result did not include name attribute for {}".format(fqdn)
-                )
+                logging.debug(f"Result did not include name attribute for {fqdn}")
             else:
                 analysis.zone_name = result.name
 
@@ -168,17 +162,13 @@ class WhoisAnalyzer(AnalysisModule):  # deep
             # This happens on certain TLDs
             if "creation_date" not in result.__dict__.keys():
                 analysis.creation_datetime_not_found = True
-                logging.debug(
-                    "Result does not include creation datetime for {}".format(fqdn)
-                )
+                logging.debug(f"Result does not include creation datetime for {fqdn}")
                 return True
 
             # If creation date is not a datetime object as expected
             if not isinstance(result.creation_date, datetime):
                 analysis.creation_datetime_wrong_format = True
-                logging.debug(
-                    "Creation datetime in unexpected format for {}".format(fqdn)
-                )
+                logging.debug(f"Creation datetime in unexpected format for {fqdn}")
                 return True
 
             _now = datetime.now()
@@ -200,5 +190,3 @@ class WhoisAnalyzer(AnalysisModule):  # deep
             analysis.age_in_days = str(age_in_days)
 
             return True
-            
-        return False
