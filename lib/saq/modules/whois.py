@@ -176,10 +176,10 @@ class WhoisAnalysis(Analysis):
         if message is None:
 
             if created is None:
-                created = f"{_created}: {self.age_created_in_days} days old."
+                created = f"{_created}: {self.age_created_in_days} day(s) ago."
 
             if updated is None:
-                updated = f"{_updated}: {self.age_last_updated_in_days} days old."
+                updated = f"{_updated}: {self.age_last_updated_in_days} day(s) ago."
 
             message = f"{_prepend} - {self.zone_name} - {created} {updated}"
 
