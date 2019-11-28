@@ -27,11 +27,14 @@ from saq.modules import AnalysisModule
 KEY_AGE_CREATED_IN_DAYS = "age_created_in_days"
 KEY_AGE_LAST_UPDATED_IN_DAYS = "age_last_updated_in_days"
 KEY_DATETIME_CREATED = "datetime_created"
+KEY_DATETIME_EXPIRATION = "datetime_expiration"
 KEY_DATETIME_OF_ANALYSIS = "datetime_of_analysis"
 KEY_DATETIME_OF_LAST_UPDATE = "datetime_of_last_update"
 KEY_NAME_SERVERS = "nameservers"
 KEY_REGISTRAR = "registrar"
 KEY_ZONE_NAME = "zone_name"
+
+NOT_IMPLEMENTED = "not_implemented"
 
 
 class WhoisAnalysis(Analysis):
@@ -42,10 +45,11 @@ class WhoisAnalysis(Analysis):
             KEY_AGE_CREATED_IN_DAYS: None,
             KEY_AGE_LAST_UPDATED_IN_DAYS: None,
             KEY_DATETIME_CREATED: None,
+            KEY_DATETIME_EXPIRATION: NOT_IMPLEMENTED,
             KEY_DATETIME_OF_ANALYSIS: None,
             KEY_DATETIME_OF_LAST_UPDATE: None,
-            KEY_NAME_SERVERS: None,
-            KEY_REGISTRAR: None,
+            KEY_NAME_SERVERS: NOT_IMPLEMENTED,
+            KEY_REGISTRAR: NOT_IMPLEMENTED,
             KEY_ZONE_NAME: None,
         }
 
