@@ -273,7 +273,7 @@ class WhoisAnalyzer(AnalysisModule):
 
             _now = datetime.now()
 
-            analysis.analysis_datetime = _now.isoformat(' ')
+            analysis.datetime_of_analysis = _now.isoformat(' ')
 
             def age_in_days_as_string(past, present):
                 _delta = present - past
