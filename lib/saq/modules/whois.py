@@ -2,72 +2,130 @@
 
 A few outcomes can be expected and must be handled.
 
-**Note that although some of these results do not tell an analyst the
+**Note that although some of these whois_results do not tell an analyst the
 'creation time' of the domain, the lack of creation time might
 say 'something' to the analyst about that domain/zone. Some things to
 consider:
 
     - The TLD is unknown/unsupported by the whois package.
-    - The result is an object of Nonetype -- no result found.
-    - The whois result for the TLD doesn't include
+    - The whois_result is an object of Nonetype -- no whois_result found.
+    - The whois whois_result for the TLD doesn't include
         a creation time.
     - Whois linux program is not installed in the OS of the
         analysis server.
-    - There were actual results.
+    - There were actual whois_results.
 """
 
 import logging
 from datetime import datetime
 
-import whois
-from whois.exceptions import UnknownTld
-
 from saq.analysis import Analysis, Observable
-from saq.constants import *
+from saq.constants import F_FQDN
 from saq.modules import AnalysisModule
 
+
+KEY_AGE_CREATED_IN_DAYS = "age_created_in_days"
+KEY_AGE_LAST_UPDATED_IN_DAYS = "age_last_updated_in_days"
 KEY_DATETIME_CREATED = "datetime_created"
 KEY_DATETIME_OF_ANALYSIS = "datetime_of_analysis"
-KEY_AGE_IN_DAYS = "age_in_days"
+KEY_DATETIME_OF_LAST_UPDATE = "datetime_of_last_update"
+KEY_NAME_SERVERS = "nameservers"
+KEY_REGISTRAR = "registrar"
 KEY_ZONE_NAME = "zone_name"
+
 
 class WhoisAnalysis(Analysis):
     """How long ago was the domain registered?"""
 
     def initialize_details(self):
         self.details = {
-            KEY_ZONE_NAME: None,
-            KEY_AGE_IN_DAYS: None,
+            KEY_AGE_CREATED_IN_DAYS: None,
+            KEY_AGE_LAST_UPDATED_IN_DAYS: None,
             KEY_DATETIME_CREATED: None,
             KEY_DATETIME_OF_ANALYSIS: None,
+            KEY_DATETIME_OF_LAST_UPDATE: None,
+            KEY_NAME_SERVERS: None,
+            KEY_REGISTRAR: None,
+            KEY_ZONE_NAME: None,
         }
-        self.tld_not_supported = False
-        self.creation_datetime_not_found = False
-        self.no_result = False
-        self.whois_not_installed = False
-        self.creation_datetime_wrong_format = False
 
+        self.datetime_created_missing_or_invalid = False
+        self.datetime_updated_missing_or_invalid = False
+        self.datetime_unknown_date_format = False
+        self.domain_not_found = False
+        self.tld_not_supported = False
+        self.whois_linux_not_installed = False
+        self.whois_python_package_not_installed = False
+        self.datetime_created_unsupported_format = False
 
     @property
     def jinja_template_path(self):
         return "analysis/whois.html"
 
+    # How many days ago the domain was registered.
     @property
-    def creation_datetime(self):
+    def age_created_in_days(self):
+        return self.details[KEY_AGE_CREATED_IN_DAYS]
+
+    @age_created_in_days.setter
+    def age_created_in_days(self, value):
+        self.details[KEY_AGE_CREATED_IN_DAYS] = value
+
+    # How many days ago the domain was updated.
+    @property
+    def age_last_updated_in_days(self):
+        return self.details[KEY_AGE_LAST_UPDATED_IN_DAYS]
+
+    @age_last_updated_in_days.setter
+    def age_last_updated_in_days(self, value):
+        self.details[KEY_AGE_LAST_UPDATED_IN_DAYS] = value
+
+    # The date/time the domain was registered.
+    @property
+    def datetime_created(self):
         return self.details[KEY_DATETIME_CREATED]
 
-    @creation_datetime.setter
-    def creation_datetime(self, value):
+    @datetime_created.setter
+    def datetime_created(self, value):
         self.details[KEY_DATETIME_CREATED] = value
 
+    # The date/time the analysis was performed.
     @property
-    def age_in_days(self):
-        return self.details[KEY_AGE_IN_DAYS]
+    def datetime_of_analysis(self):
+        return self.details[KEY_DATETIME_OF_ANALYSIS]
 
-    @age_in_days.setter
-    def age_in_days(self, value):
-        self.details[KEY_AGE_IN_DAYS] = value
+    @datetime_of_analysis.setter
+    def datetime_of_analysis(self, value):
+        self.details[KEY_DATETIME_OF_ANALYSIS] = value
 
+    # The date/time the domain was last updated.
+    @property
+    def datetime_of_last_update(self):
+        return self.details[KEY_DATETIME_OF_LAST_UPDATE]
+
+    @datetime_of_last_update.setter
+    def datetime_of_last_update(self, value):
+        self.details[KEY_DATETIME_OF_LAST_UPDATE] = value
+
+    # The name servers associated with the domain
+    @property
+    def nameservers(self):
+        return self.details[KEY_NAME_SERVERS]
+
+    @nameservers.setter
+    def nameservers(self, value):
+        self.details[KEY_NAME_SERVERS] = value
+
+    # The registrar for the domain.
+    @property
+    def registrar(self):
+        return self.details[KEY_REGISTRAR]
+
+    @registrar.setter
+    def registrar(self, value):
+        self.details[KEY_REGISTRAR] = value
+
+    # The root zone name.
     @property
     def zone_name(self):
         return self.details[KEY_ZONE_NAME]
@@ -77,43 +135,54 @@ class WhoisAnalysis(Analysis):
         self.details[KEY_ZONE_NAME] = value
 
     def generate_summary(self):
-        """Return analysis result string for alert analysis page."""
+        """Return analysis whois_result string for alert analysis page."""
 
-        _message = "Whois Analysis - {}"
+        _prepend = "Whois Analysis"
+        _created = "CREATED"
+        _updated = "LAST UPDATED"
         message = None
+        created = None
+        updated = None
 
+        # Conditions affecting both Created and Last Updated:
         if self.tld_not_supported:
-            message = _message.format("TLD not supported.")
+            message = f"{_prepend} - TLD not supported by python whois module."
 
-        if self.no_result:
-            message = _message.format("FQDN doesn't exist.")
+        if self.domain_not_found:
+            message = f"{_prepend} - domain not found."
+        
+        if self.datetime_unknown_date_format:
+            message = f"{_prepend} - unknown date format returned."
 
-        if self.creation_datetime_not_found:
-            message = _message.format("Result does not include creation datetime.")
+        if self.whois_linux_not_installed:
+            message = f"{_prepend} - whois program for linux not " \
+                      f"installed."
+        
+        if self.whois_python_package_not_installed:
+            message = f"{_prepend} - whois python module not installed."
 
-        if self.creation_datetime_wrong_format:
-            message = _message.format("Creation datetime in wrong format.")
+        # Conditions affecting one or both created/last updated datetimes.
+        if self.datetime_created_missing_or_invalid:
+            created = f"{_created}: missing or invalid whois response."
 
-        if self.whois_not_installed:
-            message = _message.format(
-                "Whois linux program not installed on analysis server"
-            )
+        if self.datetime_updated_missing_or_invalid:
+            updated = f"{_updated}: missing or invalid whois response."
 
+        # If no major issues, create the final message
         if message is None:
-            # Include the zone name because you can send an entire
-            # FQDN to the whois program, and the root zone is actually
-            # what is looked up. This is that there is no confusion
-            # for the analyst in whether whois attempted to lookup a
-            # FQDN/subdomain or the root zone.
 
-            _status = f"{self.details[KEY_ZONE_NAME]} is " \
-                      f"{self.details[KEY_AGE_IN_DAYS]} days old."
-            message = _message.format(_status)
+            if created is None:
+                created = f"{_created}: {self.age_created_in_days} days old."
+
+            if updated is None:
+                updated = f"{_updated}: {self.age_last_updated_in_days} days old."
+
+            message = f"{_prepend} - {self.zone_name} - {created} {updated}"
 
         return message
 
 
-class WhoisAnalyzer(AnalysisModule):  # deep
+class WhoisAnalyzer(AnalysisModule):
 
     @property
     def generated_analysis_type(self):
@@ -127,66 +196,96 @@ class WhoisAnalyzer(AnalysisModule):  # deep
         """Executes analysis for Whois analysis of domains/zones."""
 
         analysis = self.create_analysis(_fqdn)
-        analysis.logs = self.json()
+        # analysis.logs = self.json()
 
         fqdn = _fqdn.value
 
-        try:
-            logging.debug(f"Beginning whois analysis of {fqdn}")
-            result = whois.query(fqdn)
+        logging.debug(f"Beginning whois analysis of {fqdn}")
 
-        # whois python module doesn't know about the TLD of the FQDN
+        # Check to see if the whois python module is installed or not.
+        try:
+            import whois
+            from whois.exceptions import (
+                FailedParsingWhoisOutput,
+                UnknownDateFormat,
+                UnknownTld,
+                WhoisCommandFailed,
+            )
+        except ModuleNotFoundError:
+            analysis.whois_python_package_not_installed = True
+            logging.debug("Whois python module is not installed.")
+            return True
+
+        # Make the whois query.
+        try:
+            whois_result = whois.query(fqdn)
+        
+        except (FailedParsingWhoisOutput, WhoisCommandFailed):
+            analysis.command_failed = True
+            logging.debug(f"Whois command general failure or failure parsing output.")
+            return True
+
+        # Whois python module doesn't know about the TLD of the FQDN.
         except UnknownTld:
             analysis.tld_not_supported = True
-            logging.debug(f"TLD not supported by for {fqdn}.")
-            return True  # Still tells an analyst something about the domain.
+            logging.debug(f"TLD not supported by whois python module.")
+            return True
 
+        # Whois is not installed on the analysis server.
         except FileNotFoundError:
-            analysis.whois_not_installed = True
+            analysis.whois_linux_not_installed = True
             logging.debug("Whois program not installed on analysis server.")
             return True
 
+        # Whois python module received a date in a format it wasn't
+        # expecting.
+        except UnknownDateFormat:
+            analysis.datetime_unknown_date_format = True
+            logging.debug("Unknown date format in whois response.")
+            return True
+
         else:
-            if result is None:
-                analysis.no_result = True
-                logging.debug(f"No result received from whois analysis of {fqdn}")
+            if whois_result is None:
+                analysis.domain_not_found = True
+                logging.debug(f"No whois_result / domain not found.")
                 return True
 
-            if 'name' not in result.__dict__.keys():
-                analysis.zone_name = "NO_NAME_RETURNED"
-                logging.debug(f"Result did not include name attribute for {fqdn}")
+            # Check for zone name returned from whois query.
+            if ('name' not in whois_result.__dict__.keys()) or (not whois_result.name):
+                analysis.zone_name = "NO_ZONE_NAME_RETURNED"
+                logging.debug(f"Result did not include valid zone name.")
             else:
-                analysis.zone_name = result.name
+                analysis.zone_name = whois_result.name
 
-            # If creation date not reported back from whois server.
-            # This happens on certain TLDs
-            if "creation_date" not in result.__dict__.keys():
-                analysis.creation_datetime_not_found = True
-                logging.debug(f"Result does not include creation datetime for {fqdn}")
-                return True
+            # creation date validation
+            if ("creation_date" not in whois_result.__dict__.keys()) or (not isinstance(whois_result.creation_date, datetime)):
+                analysis.datetime_created_missing_or_invalid= True
+                logging.debug(f"Result does not include creation datetime.")
 
-            # If creation date is not a datetime object as expected
-            if not isinstance(result.creation_date, datetime):
-                analysis.creation_datetime_wrong_format = True
-                logging.debug(f"Creation datetime in unexpected format for {fqdn}")
-                return True
+            # last updated date validation
+            if ("last_updated" not in whois_result.__dict__.keys()) or (not isinstance(whois_result.last_updated, datetime)):
+                analysis.datetime_updated_missing_or_invalid = True
+                logging.debug(f"Result does not include last updated datetime.")
 
             _now = datetime.now()
-            _delta = _now - result.creation_date
-            
-            analysis.creation_datetime = result.creation_date.isoformat(' ')
+
             analysis.analysis_datetime = _now.isoformat(' ')
 
-            # Days will appear as a negative anytime 'now' is less than
-            # the whois creation time.. added in case of timezone
-            # issues.
-            if _delta.days < 0:
-                analysis.age_in_days = "0"
-                return True
+            def age_in_days_as_string(past, present):
+                _delta = present - past
+                # Days are negative if past is actually after the
+                # present. Probably an indication of time zone issues so
+                # assume it's less than a day.
+                if _delta.days < 0:
+                    return "0"
+                return str(_delta.days)
 
-            # Floor value, because I'm paranoid.
-            age_in_days = _delta.seconds // 86400
+            if not analysis.datetime_created_missing_or_invalid:
+                analysis.datetime_created = whois_result.creation_date.isoformat(' ')
+                analysis.age_created_in_days = age_in_days_as_string(whois_result.creation_date, _now)
 
-            analysis.age_in_days = str(age_in_days)
+            if not analysis.datetime_updated_missing_or_invalid:
+                analysis.datetime_of_last_update= whois_result.last_updated.isoformat(' ')
+                analysis.age_last_updated_in_days = age_in_days_as_string(whois_result.last_updated, _now)
 
             return True
